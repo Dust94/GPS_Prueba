@@ -80,23 +80,28 @@ unsigned char Syncronization(){
 	if(uart_available(ToGPS)){
 		cc = uart_read(ToGPS);
 		while(cc != 0xB5) cc = uart_read(ToGPS);	// wait for sync 1 (0xB5)
+		uart_println(ToPC,"Finish Step 1");
 	
 		while(cc != 0x62) cc = uart_read(ToGPS);	// wait for sync 2 (0x62)
-	
+		uart_println(ToPC,"Finish Step 2");
+		
 		cc = uart_read(ToGPS);					// wait for class code
 		code = cc;
 		ck1 += cc;
 		ck2 += ck1;
+		uart_println(ToPC,"Finish Step 3");
 	
 		cc = uart_read(ToGPS);						// wait for Id
 		id = cc;
 		ck1 += cc;
 		ck2 += ck1;
+		uart_println(ToPC,"Finish Step 4");
 	
 		cc = uart_read(ToGPS);						// wait for length byte 1
 		length = cc;
 		ck1 += cc;
 		ck2 += ck1;
+		uart_println(ToPC,"Finish Step 5");
 	
 		cc = uart_read(ToGPS);						// wait for length byte 2
 		length |= ((unsigned int) cc << 8);
@@ -104,7 +109,8 @@ unsigned char Syncronization(){
 		ck2 += ck1;
 		idx = 0;
 		if (length > MAX_LENGTH) return 0;	// Reinicio la Syncronization
-	
+		uart_println(ToPC,"Finish Step 6");
+		
 		cc = uart_read(ToGPS);						// wait for <length> payload bytes
 		while(!(idx >= length)){
 			cc = uart_read(ToGPS);
@@ -112,12 +118,16 @@ unsigned char Syncronization(){
 			ck1 += cc;
 			ck2 += ck1;
 		}
+		uart_println(ToPC,"Finish Step 7");
 	
 		cc = uart_read(ToGPS);	// wait for checksum 1
 		chk1 = cc;
-	
+		uart_println(ToPC,"Finish Step 8");
+		
 		cc = uart_read(ToGPS);	// wait for checksum 2
 		chk2 = cc;
+		uart_println(ToPC,"Finish Final Step");
+		
 	}//Fin If uart_available()	
 	
 	//Impresion de las Variables
