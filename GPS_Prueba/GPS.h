@@ -12,8 +12,14 @@
 #define MAX_LENGTH	512
 #define POSLLH_MSG  0x02
 #define SOL_MSG     0x06
+#define SBAS_MSG    0x32
+#define VELNED_MSG  0x12
+#define STATUS_MSG  0x03
+#define DOP_MSG     0x04
+#define DGPS_MSG    0x31
 #define ToPC		0
 #define ToGPS		2
+
 
 /***************PUNTEROS****************/
 #define LONG(X)    *(long*)(&data[X])
@@ -26,7 +32,7 @@ unsigned int  length, idx, cnt, len_cmdBuf;
 unsigned char data[MAX_LENGTH];
 long lastTime = 0;
 int checkOk = 0;
-unsigned char cc, flag;
+unsigned char cc, flag, state;
 
 void sendCmd (unsigned char len, uint8_t data[]) {
 	uart_print(ToGPS, 0xB5);
@@ -72,64 +78,16 @@ void Setup_GPS(void){
   
 	// Modify these to control which messages are sent from module
 	enableMsg(POSLLH_MSG, 1);    // Enable position messages
-	enableMsg(SOL_MSG, 1);       // Enable soluton 
+	enableMsg(SOL_MSG, 1);       // Enable solution
+	enableMsg(SBAS_MSG, 0);      // Enable SBAS messages
+	enableMsg(VELNED_MSG, 0);    // Enable velocity messages
+	enableMsg(STATUS_MSG, 0);    // Enable status messages
+	enableMsg(DOP_MSG, 0);       // Enable DOP messages
+	enableMsg(DGPS_MSG, 0);      // Disable DGPS messages 
 	uart_println(ToPC, "Fin Setup GPS y Uarth");
 }
 
-unsigned char Syncronization(){
-	if(uart_available(ToGPS)){
-		cc = uart_read(ToGPS);
-		while(cc != 0xB5) cc = uart_read(ToGPS);	// wait for sync 1 (0xB5)
-		uart_println(ToPC,"Finish Step 1");
-	
-		while(cc != 0x62) cc = uart_read(ToGPS);	// wait for sync 2 (0x62)
-		uart_println(ToPC,"Finish Step 2");
-		
-		cc = uart_read(ToGPS);					// wait for class code
-		code = cc;
-		ck1 += cc;
-		ck2 += ck1;
-		uart_println(ToPC,"Finish Step 3");
-	
-		cc = uart_read(ToGPS);						// wait for Id
-		id = cc;
-		ck1 += cc;
-		ck2 += ck1;
-		uart_println(ToPC,"Finish Step 4");
-	
-		cc = uart_read(ToGPS);						// wait for length byte 1
-		length = cc;
-		ck1 += cc;
-		ck2 += ck1;
-		uart_println(ToPC,"Finish Step 5");
-	
-		cc = uart_read(ToGPS);						// wait for length byte 2
-		length |= ((unsigned int) cc << 8);
-		ck1 += cc;
-		ck2 += ck1;
-		idx = 0;
-		if (length > MAX_LENGTH) return 0;	// Reinicio la Syncronization
-		uart_println(ToPC,"Finish Step 6");
-		
-		cc = uart_read(ToGPS);						// wait for <length> payload bytes
-		while(!(idx >= length)){
-			cc = uart_read(ToGPS);
-			data[idx++] = cc;
-			ck1 += cc;
-			ck2 += ck1;
-		}
-		uart_println(ToPC,"Finish Step 7");
-	
-		cc = uart_read(ToGPS);	// wait for checksum 1
-		chk1 = cc;
-		uart_println(ToPC,"Finish Step 8");
-		
-		cc = uart_read(ToGPS);	// wait for checksum 2
-		chk2 = cc;
-		uart_println(ToPC,"Finish Final Step");
-		
-	}//Fin If uart_available()	
-	
+void ImpresionVariables(void){
 	//Impresion de las Variables
 	unsigned char tempVariable[10];
 	uart_print(ToPC,"chk1: "); uart_println(ToPC,itoa(chk1,tempVariable,10));
@@ -137,38 +95,92 @@ unsigned char Syncronization(){
 	uart_print(ToPC,"length: "); uart_println(ToPC,itoa(length,tempVariable,10));
 	uart_print(ToPC,"chk2: "); uart_println(ToPC,itoa(chk2,tempVariable,10));
 	uart_print(ToPC,"ck2: "); uart_println(ToPC,itoa(ck2,tempVariable,10));
-	
-	if( (ck1 == chk1)  &&  (ck2 == chk2) ) return 1;
-	return 0;
-}// Fin Syncronization()
+}
 
+void Syncronization(void){
+	state = 0;
+	if(uart_available(ToGPS)){
+		cc = uart_read(ToGPS);
+		
+		if(state == 0){								// wait for sync 1 (0xB5)
+			ck1 = 0; ck2 = 0;
+			if(cc == 0xB5) state++;
+		} uart_println(ToPC,"Finish Step 0");
+		
+		if (state == 1){						// wait for sync 2 (0x62)
+			if(cc == 0x62) state++;
+			else state=0;
+		} uart_println(ToPC,"Finish Step 1");
 
-void GPS(void){
-	if(Syncronization()){
-		uart_println(ToPC, "Entre! checkOk=1 ");
+		if (state == 2){						// wait for class code
+			code = cc;
+			ck1 += cc;
+			ck2 += ck1;
+			state++;
+		} uart_println(ToPC,"Finish Step 2");
+		
+		if (state == 3){						// wait for Id
+			id = cc;
+			ck1 += cc;
+			ck2 += ck1;
+			state++;
+		} uart_println(ToPC,"Finish Step 3");
+		
+		if (state == 4){						// wait for length byte 1
+			length = cc;
+			ck1 += cc;
+			ck2 += ck1;
+			state++;
+		} uart_println(ToPC,"Finish Step 4");
+		
+		if (state == 5){						// wait for length byte 2
+			length |= (unsigned int) cc << 8;
+			ck1 += cc;
+			ck2 += ck1;
+			idx = 0;
+			state++;
+			if (length > MAX_LENGTH) state= 0;
+		} uart_println(ToPC,"Finish Step 5");
+		
+		if (state == 6){						// wait for <length> payload bytes
+			data[idx++] = cc;
+			ck1 += cc;
+			ck2 += ck1;
+			if (idx >= length) state++;
+		} uart_println(ToPC,"Finish Step 6");
+		
+		if (state == 7){						// wait for checksum 1
+			chk1 = cc;
+			state++;
+		} uart_println(ToPC,"Finish Step 7 (Final Step)");
+		
+		if (state == 8){						// wait for checksum 2
+			chk2 = cc;
+			ImpresionVariables();
 			
-		unsigned char tempCode[10];
-		uart_print(ToPC,"code: "); uart_println(ToPC,itoa(code,tempCode,10));
-			
-		switch (code) {
-			case 0x01:      // NAV-
-				uart_println(ToPC,"Ingresé a code=0x01");
-				if (lastTime != ULONG(0))	lastTime = ULONG(0);
-				unsigned char tempId[10];
-				uart_print(ToPC,"Id: "); uart_println(ToPC,itoa(code,tempId,10));
+			if((ck1 == chk1)  &&  (ck2 == chk2)){ // Only if checkOk=1
+				uart_println(ToPC, "Entre! checkOk=1 ");
+				unsigned char tempCode[10];
+				uart_print(ToPC,"code: "); uart_println(ToPC,itoa(code,tempCode,10));
+				
+				if (code == 0x01){
+					uart_println(ToPC,"Ingresé a code=0x01");
+					if (lastTime != ULONG(0))	lastTime = ULONG(0);
+					unsigned char tempId[10];
+					uart_print(ToPC,"Id: "); uart_println(ToPC,itoa(id,tempId,10));
 					
-				if (id == POSLLH_MSG){
-					uart_print(ToPC, "X: ");	printLatLon(LONG(8));
-					uart_print(ToPC, "Y: ");	printLatLon(LONG(4));
-				} // Fin POSLLH_MSG
-				else if (id == SOL_MSG){
-					uart_println(ToPC,"Ingresé a id == SOL_MSG");
-					unsigned char tempData24[10];
-					uart_print(ToPC,"ULONG(24): "); uart_println(ToPC,itoa(code,tempData24,10));
-				} // Fin SOL_MSG
-				break;
+					if (id == POSLLH_MSG){
+						uart_print(ToPC, "X: ");	printLatLon(LONG(8));
+						uart_print(ToPC, "Y: ");	printLatLon(LONG(4));
+					} // Fin id=POSLLH_MSG
 					
-				/*
+					else if (id == SOL_MSG){
+						uart_println(ToPC,"Ingresé a id == SOL_MSG");
+						unsigned char tempData24[10];
+						uart_print(ToPC,"ULONG(24): "); uart_println(ToPC,ltoa(ULONG(24),tempData24,10));
+					} // Fin id=SOL_MSG
+					
+					/*
 						switch (id) {
 							case 0x02:  // NAV-POSLLH
 								printLatLon(LONG(4)); uart_print(ToPC,"\n\r");
@@ -259,9 +271,14 @@ void GPS(void){
 						printHex(data[1]); uart_print(ToPC, "\n\r"); break;
 						*/
 					
-		} //Fin Switch code		
-	} // Fin If(Syncronization())				
-} // Fin GPS()
+					
+				} //Fin If(code == 0x01)
+			} //Fin if(checkOk)		
+			state = 0;
+		} // Fin if(state == 8)	Last Step
+	}//Fin If uart_available()	
+}// Fin Syncronization()
+
 
 
 

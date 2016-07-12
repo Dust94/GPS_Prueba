@@ -7,7 +7,7 @@ int main(void){
 	Setup_GPS();
 	uart_println(ToPC, "Acaba DE TERMINAR EL SETUP");
     while (1) {
-		GPS();
-    } //Fin While(1)*/
+		Syncronization();
+    } //Fin While(1)
 } // Fin main()
 
